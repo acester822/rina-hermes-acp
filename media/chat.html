@@ -63,6 +63,44 @@ body {
     padding: 2px 4px;
 }
 #sessionBtn:hover { color: var(--fg); }
+
+#agentPicker { position: relative; }
+#agentBtn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+}
+#agentBtn:hover { color: var(--fg); }
+.agent-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 180px;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.agent-dropdown .dropdown-header {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+}
+.agent-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.agent-item:hover { background: var(--text-block); }
 .session-dropdown {
     position: absolute;
     top: 100%;
@@ -381,6 +419,13 @@ body {
 <div id="header">
     <div class="header-left">
         <span class="title">Hermes Agent</span>
+        <div class="agent-picker" id="agentPicker">
+            <button id="agentBtn" title="Switch Agent">⬡</button>
+            <div class="agent-dropdown" id="agentDropdown" style="display:none">
+                <div class="dropdown-header">Agents</div>
+                <div id="agentList"></div>
+            </div>
+        </div>
         <div class="session-picker" id="sessionPicker">
             <button id="sessionBtn" title="Sessions">☰</button>
             <div class="session-dropdown" id="sessionDropdown" style="display:none">
@@ -634,10 +679,39 @@ body {
     });
     document.addEventListener('click', function() {
         sessionDropdown.style.display = 'none';
+        agentDropdown.style.display = 'none';
     });
     sessionDropdown.addEventListener('click', function(e) {
         e.stopPropagation();
     });
+
+    // Agent picker
+    const agentBtn = document.getElementById('agentBtn');
+    const agentDropdown = document.getElementById('agentDropdown');
+    agentBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        agentDropdown.style.display = agentDropdown.style.display === 'none' ? 'block' : 'none';
+    });
+    agentDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+
+    function renderAgentList(agents) {
+        const list = document.getElementById('agentList');
+        if (!agents || agents.length === 0) {
+            list.innerHTML = '<div class="agent-item" style="color:var(--dim);cursor:default">No agents configured</div>';
+            return;
+        }
+        list.innerHTML = agents.map(name =>
+            '<div class="agent-item" data-agent="' + name + '">' + name + '</div>'
+        ).join('');
+        list.querySelectorAll('.agent-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                vscode.postMessage({ type: 'switchAgent', agentName: this.dataset.agent });
+                agentDropdown.style.display = 'none';
+            });
+        });
+    }
 
     function renderSessionList(sessions) {
         const list = document.getElementById('sessionList');
@@ -729,6 +803,10 @@ body {
 
             case 'sessionList':
                 renderSessionList(msg.sessions);
+                break;
+
+            case 'agentList':
+                renderAgentList(msg.agents);
                 break;
         }
     });

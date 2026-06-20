@@ -72,6 +72,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 case 'ready':
                     this._log('WebView ready');
                     this._postMessage({ type: 'sessionList', sessions: this._sessions });
+                    this._postMessage({ type: 'agentList', agents: this._getAgentNames() });
                     this._restoreMessages();
                     this._connect();
                     break;
@@ -80,6 +81,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'deleteSession':
                     this._handleDeleteSession(message.sessionId);
+                    break;
+                case 'switchAgent':
+                    this._handleSwitchAgent(message.agentName);
                     break;
             }
         });
@@ -154,13 +158,26 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         } catch { this._sessions = []; }
     }
 
-    private async _connect(): Promise<void> {
+    private async _connect(agentName?: string): Promise<void> {
         if (this._acp) return;
-        this._log('Connecting...');
+        this._log(`Connecting${agentName ? ' as ' + agentName : ''}...`);
 
         const config = vscode.workspace.getConfiguration('hermes');
-        const configPath = config.get<string>('path') || undefined;
-        const configCwd = config.get<string>('cwd') || undefined;
+        let configPath = config.get<string>('path') || undefined;
+        let configCwd = config.get<string>('cwd') || undefined;
+        let configProfile = config.get<string>('profile') || undefined;
+
+        // If a named agent was requested, look it up
+        if (agentName) {
+            const agents = config.get<any[]>('agents') || [];
+            const agent = agents.find(a => a.name === agentName);
+            if (agent) {
+                if (agent.path) configPath = agent.path;
+                if (agent.cwd) configCwd = agent.cwd;
+                if (agent.profile) configProfile = agent.profile;
+            }
+        }
+
         const cwd = this._resolveCwd(configCwd);
 
         this._acp = new AcpClient(
@@ -212,7 +229,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             }
         );
         try {
-            await this._acp.start(cwd, configPath);
+            await this._acp.start(cwd, configPath, configProfile);
         } catch {
             // start() already set error status and cleaned up — just null the ref
             this._acp = undefined;
@@ -285,6 +302,25 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             fs.writeFileSync(this._sessionsPath, JSON.stringify(this._sessions, null, 2));
         } catch { /* ignore */ }
         this._postMessage({ type: 'sessionList', sessions: this._sessions });
+    }
+
+    private async _handleSwitchAgent(agentName: string): Promise<void> {
+        this._log(`Switch to agent: ${agentName}`);
+        this._saveCurrentSession();
+        this._acp?.dispose();
+        this._acp = undefined;
+        this._sessionMessages = [];
+        this._sessionId = Date.now().toString(36);
+        try { fs.unlinkSync(this._historyPath); } catch { /* ignore */ }
+        this._postMessage({ type: 'newChat' });
+        this._postMessage({ type: 'agentList', agents: this._getAgentNames() });
+        await this._connect(agentName);
+    }
+
+    private _getAgentNames(): string[] {
+        const config = vscode.workspace.getConfiguration('hermes');
+        const agents = config.get<any[]>('agents') || [];
+        return agents.map(a => a.name).filter(Boolean);
     }
 
     public newChat(): void {

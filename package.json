@@ -69,6 +69,26 @@
           "type": "string",
           "default": "",
           "description": "Working directory for Hermes sessions. Defaults to workspace root."
+        },
+        "hermes.profile": {
+          "type": "string",
+          "default": "",
+          "description": "Hermes profile name (maps to hermes --profile <name>). Leave empty for default."
+        },
+        "hermes.agents": {
+          "type": "array",
+          "default": [],
+          "description": "List of named agent configurations for quick switching.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "path": { "type": "string" },
+              "profile": { "type": "string" },
+              "cwd": { "type": "string" }
+            },
+            "required": ["name"]
+          }
         }
       }
     }

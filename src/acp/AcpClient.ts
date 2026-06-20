@@ -81,7 +81,7 @@ export class AcpClient {
         return this._status;
     }
 
-    async start(cwd: string = process.cwd(), hermesPath?: string): Promise<void> {
+    async start(cwd: string = process.cwd(), hermesPath?: string, hermesProfile?: string): Promise<void> {
         if (!this._transitionTo('connecting', 'Starting Hermes ACP...')) {
             return;
         }
@@ -90,7 +90,12 @@ export class AcpClient {
             const resolvedPath = hermesPath || await this._findHermes();
             if (!resolvedPath) throw new Error('Hermes executable not found');
 
-            this._process = spawn(resolvedPath, ['acp'], {
+            const args = ['acp'];
+            if (hermesProfile) {
+                args.unshift('--profile', hermesProfile);
+            }
+
+            this._process = spawn(resolvedPath, args, {
                 cwd,
                 stdio: ['pipe', 'pipe', 'pipe'],
                 env: { ...process.env }
