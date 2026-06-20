@@ -1,0 +1,66 @@
+{
+  "name": "hermes-agent-chat",
+  "displayName": "Hermes Agent Chat",
+  "description": "Chat with Hermes Agent directly inside VS Code",
+  "version": "0.1.0",
+  "publisher": "jove-rina",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Chat",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:hermesChat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hermes-sidebar",
+          "title": "Hermes Agent",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "hermes-sidebar": [
+        {
+          "type": "webview",
+          "id": "hermesChat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "hermes.newChat",
+        "title": "Hermes: New Chat"
+      },
+      {
+        "command": "hermes.openChat",
+        "title": "Hermes: Open Chat"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.28.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jove-rina/hermes-agent-chat"
+  }
+}
