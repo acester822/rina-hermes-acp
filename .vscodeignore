@@ -5,3 +5,7 @@ tsconfig.json
 .gitignore
 PLAN.md
 CODE_REVIEW*.md
+media/*.svg
+.sessions.json
+.chat-history.json
+out/tests/

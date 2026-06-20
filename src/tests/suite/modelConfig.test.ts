@@ -3,8 +3,13 @@ import assert from 'assert';
 import {
     buildFallbackModelListState,
     buildModelListState,
+    buildModelListStateFromHermesModels,
+    buildModelListStateFromSessionResponse,
     flattenSelectOptions,
     findModelConfigOption,
+    HERMES_MODEL_CONFIG_ID,
+    SETTINGS_MODEL_CONFIG_ID,
+    isHermesModelValueId,
 } from '../../acp/modelConfig';
 
 describe('modelConfig', () => {
@@ -67,6 +72,52 @@ describe('modelConfig', () => {
         assert.ok(state);
         assert.strictEqual(state!.fromAgent, false);
         assert.strictEqual(state!.currentLabel, 'Smart');
-        assert.strictEqual(state!.configId, '__settings__');
+        assert.strictEqual(state!.configId, SETTINGS_MODEL_CONFIG_ID);
+    });
+
+    it('buildModelListStateFromHermesModels parses Hermes ACP models field', () => {
+        const state = buildModelListStateFromHermesModels({
+            currentModelId: 'deepseek:deepseek-v4-flash',
+            availableModels: [
+                { modelId: 'deepseek:deepseek-v4-flash', name: 'deepseek-v4-flash' },
+                { modelId: 'deepseek:deepseek-v4-pro', name: 'deepseek-v4-pro' },
+            ],
+        });
+        assert.ok(state);
+        assert.strictEqual(state!.configId, HERMES_MODEL_CONFIG_ID);
+        assert.strictEqual(state!.currentLabel, 'deepseek-v4-flash');
+        assert.strictEqual(state!.models.length, 2);
+        assert.strictEqual(state!.fromAgent, true);
+    });
+
+    it('buildModelListStateFromSessionResponse prefers configOptions then models', () => {
+        const fromHermes = buildModelListStateFromSessionResponse({
+            models: {
+                currentModelId: 'm1',
+                availableModels: [{ modelId: 'm1', name: 'Model 1' }],
+            },
+        });
+        assert.strictEqual(fromHermes!.configId, HERMES_MODEL_CONFIG_ID);
+
+        const fromConfig = buildModelListStateFromSessionResponse({
+            configOptions: [{
+                id: 'model',
+                type: 'select',
+                category: 'model',
+                name: 'Model',
+                currentValue: 'a',
+                options: [{ value: 'a', name: 'A' }],
+            }],
+            models: {
+                currentModelId: 'm1',
+                availableModels: [{ modelId: 'm1', name: 'Model 1' }],
+            },
+        });
+        assert.strictEqual(fromConfig!.configId, 'model');
+    });
+
+    it('isHermesModelValueId detects provider-prefixed ids', () => {
+        assert.strictEqual(isHermesModelValueId('deepseek:deepseek-v4-pro'), true);
+        assert.strictEqual(isHermesModelValueId('gpt-4'), false);
     });
 });

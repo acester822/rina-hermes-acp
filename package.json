@@ -1,9 +1,10 @@
 {
   "name": "hermes-agent-chat",
-  "displayName": "Hermes Agent Chat",
-  "description": "Chat with Hermes Agent directly inside VS Code",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.2.0-beta.1",
   "publisher": "jove-rina",
+  "icon": "media/icon.png",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -21,7 +22,7 @@
       "activitybar": [
         {
           "id": "hermes-sidebar",
-          "title": "Hermes Agent",
+          "title": "%viewsContainers.activitybar.title%",
           "icon": "$(comment-discussion)"
         }
       ]
@@ -31,22 +32,22 @@
         {
           "type": "webview",
           "id": "hermesChat",
-          "name": "Chat"
+          "name": "%views.hermesChat.name%"
         }
       ]
     },
     "commands": [
       {
         "command": "hermes.newChat",
-        "title": "Hermes: New Chat"
+        "title": "%commands.hermes.newChat.title%"
       },
       {
         "command": "hermes.openChat",
-        "title": "Hermes: Open Chat"
+        "title": "%commands.hermes.openChat.title%"
       },
       {
         "command": "hermes.sendSelection",
-        "title": "Send to Hermes Agent"
+        "title": "%commands.hermes.sendSelection.title%"
       }
     ],
     "menus": {
@@ -58,38 +59,38 @@
       ]
     },
     "configuration": {
-      "title": "Hermes Agent Chat",
+      "title": "%configuration.title%",
       "properties": {
         "hermes.path": {
           "type": "string",
           "default": "",
-          "description": "Path to the Hermes executable. Leave empty to auto-detect."
+          "description": "%configuration.hermes.path.description%"
         },
         "hermes.cwd": {
           "type": "string",
           "default": "",
-          "description": "Working directory for Hermes sessions. Defaults to workspace root."
+          "description": "%configuration.hermes.cwd.description%"
         },
         "hermes.profile": {
           "type": "string",
           "default": "",
-          "description": "Hermes profile name (maps to hermes --profile <name>). Leave empty for default."
+          "description": "%configuration.hermes.profile.description%"
         },
         "hermes.showThoughts": {
           "type": "boolean",
           "default": false,
-          "description": "Show agent thinking process in the chat."
+          "description": "%configuration.hermes.showThoughts.description%"
         },
         "hermes.showToolCalls": {
           "type": "boolean",
           "default": false,
-          "description": "Show tool call notifications in the chat."
+          "description": "%configuration.hermes.showToolCalls.description%"
         },
         "hermes.models": {
           "type": "array",
           "default": [],
-          "description": "Fallback model list when Hermes does not expose ACP session config options.",
-          "markdownDescription": "Used when the agent does not return `configOptions` with a model selector. Example:\n```json\n[\n  { \"id\": \"claude-sonnet\", \"name\": \"Claude Sonnet\" },\n  { \"id\": \"gpt-4o\", \"name\": \"GPT-4o\" }\n]\n```",
+          "description": "%configuration.hermes.models.description%",
+          "markdownDescription": "%configuration.hermes.models.markdownDescription%",
           "items": {
             "type": "object",
             "properties": {
@@ -102,13 +103,13 @@
         "hermes.defaultModel": {
           "type": "string",
           "default": "",
-          "description": "Default model id from hermes.models (fallback list only)."
+          "description": "%configuration.hermes.defaultModel.description%"
         },
         "hermes.agents": {
           "type": "array",
           "default": [],
-          "description": "List of named agent configurations for quick switching via the chat UI.",
-          "markdownDescription": "List of named agent configurations for quick switching. Each agent can have a different `path`, `profile`, and `cwd`. Example:\n```json\n[\n  { \"name\": \"Default\", \"profile\": \"\" },\n  { \"name\": \"Fast\", \"path\": \"/path/to/hermes\", \"profile\": \"fast\" }\n]\n```",
+          "description": "%configuration.hermes.agents.description%",
+          "markdownDescription": "%configuration.hermes.agents.markdownDescription%",
           "items": {
             "type": "object",
             "properties": {

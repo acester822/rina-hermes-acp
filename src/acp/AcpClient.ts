@@ -15,6 +15,10 @@ import type {
 import { PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
 import {
     buildModelListState,
+    buildModelListStateFromHermesModels,
+    buildModelListStateFromSessionResponse,
+    HERMES_MODEL_CONFIG_ID,
+    isHermesModelValueId,
     type ModelListState
 } from './modelConfig';
 
@@ -32,6 +36,8 @@ export type FileSystemHandler = {
 };
 export type TerminalHandler = (command: string, args: string[], cwd: string) => void;
 export type LogHandler = (text: string) => void;
+export type TokenUsage = { used: number; size: number };
+export type UsageHandler = (usage: TokenUsage) => void;
 
 interface TerminalInstance {
     process: ChildProcess;
@@ -61,7 +67,11 @@ export class AcpClient {
     private _responseBuffer: string = '';
     private _thoughtBuffer: string = '';
     private _configOptions: unknown[] = [];
+    private _modelListState: ModelListState | null = null;
+    /** Raw Hermes ``models`` payload; preserved across empty config_option updates. */
+    private _hermesModelsRaw: unknown = null;
     private _onModelsChanged: ModelsChangedHandler;
+    private _onUsage: UsageHandler;
 
     private static readonly VALID: Record<AcpStatus, AcpStatus[]> = {
         idle:        ['connecting'],
@@ -82,6 +92,7 @@ export class AcpClient {
         onConnectionLost?: ConnectionLostHandler,
         onFileSystem?: FileSystemHandler,
         onTerminal?: TerminalHandler,
+        onUsage?: UsageHandler,
         onModelsChanged?: ModelsChangedHandler
     ) {
         this._onMessage = onMessage;
@@ -91,13 +102,14 @@ export class AcpClient {
         this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
         this._onTerminal = onTerminal || (() => {});
         this._onLog = () => {};
+        this._onUsage = onUsage || (() => {});
         this._onModelsChanged = onModelsChanged || (() => {});
     }
 
     set onLog(handler: LogHandler) { this._onLog = handler; }
 
     getModelListState(): ModelListState | null {
-        return buildModelListState(this._configOptions);
+        return this._modelListState ?? buildModelListState(this._configOptions);
     }
 
     get status(): AcpStatus {
@@ -256,13 +268,13 @@ export class AcpClient {
 
             const builder = ctx.buildSession(cwd);
             this._session = await builder.start();
-            this._syncConfigOptions(this._session.newSessionResponse.configOptions);
-            this._transitionTo('ready', `Session: ${this._session.sessionId}`);
+            this._syncSessionModels(this._session.newSessionResponse);
+            this._transitionTo('ready');
 
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
+            this._cleanupResources();
             this._transitionTo('error', `Connection failed: ${msg}`);
-            this.stop();
             throw err;
         }
     }
@@ -309,9 +321,30 @@ export class AcpClient {
             throw new Error('Cannot change model while Hermes is responding');
         }
 
+        const effectiveConfigId = configId || this._modelListState?.configId || '';
+        const useHermesSetModel =
+            effectiveConfigId === HERMES_MODEL_CONFIG_ID ||
+            this._modelListState?.configId === HERMES_MODEL_CONFIG_ID ||
+            this._hermesModelsRaw != null ||
+            isHermesModelValueId(valueId);
+
+        if (useHermesSetModel) {
+            this._onLog(`session/set_model → ${valueId}`);
+            await this._conn.agent.request('session/set_model', {
+                sessionId: this._session.sessionId,
+                modelId: valueId,
+            } as any);
+            this._applyHermesModelSelection(valueId);
+            return;
+        }
+
+        if (!effectiveConfigId) {
+            throw new Error('No model configuration available from agent');
+        }
+
         const response = await this._conn.agent.request(methods.agent.session.setConfigOption, {
             sessionId: this._session.sessionId,
-            configId,
+            configId: effectiveConfigId,
             value: valueId,
         } as any);
 
@@ -332,7 +365,7 @@ export class AcpClient {
             this._thoughtBuffer = '';
             const builder = this._conn.agent.buildSession(cwd);
             this._session = await builder.start();
-            this._syncConfigOptions(this._session.newSessionResponse.configOptions);
+            this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -342,10 +375,14 @@ export class AcpClient {
     }
 
     stop(): void {
+        this._cleanupResources();
+        this._transitionTo('idle');
+    }
+
+    private _cleanupResources(): void {
         try {
             this._session?.dispose();
         } catch { /* ignore */ }
-        // Kill all terminal child processes
         for (const [, term] of this._terminals) {
             try { term.process.kill(); } catch { /* ignore */ }
         }
@@ -358,8 +395,6 @@ export class AcpClient {
             this._process.kill();
             this._process = null;
         }
-
-        this._transitionTo('idle');
     }
 
     dispose(): void {
@@ -498,12 +533,71 @@ export class AcpClient {
                 }
                 break;
             }
+
+            case 'usage_update': {
+                const used = Number(update.used) || 0;
+                const size = Number(update.size) || 0;
+                if (size > 0) {
+                    this._onUsage({ used, size });
+                }
+                break;
+            }
         }
+    }
+
+    private _syncSessionModels(source: unknown): void {
+        if (source && typeof source === 'object') {
+            const r = source as Record<string, unknown>;
+            if (Array.isArray(r.configOptions)) {
+                this._configOptions = r.configOptions as unknown[];
+            }
+            if (r.models != null) {
+                this._hermesModelsRaw = r.models;
+            }
+        }
+        const state = buildModelListStateFromSessionResponse(source);
+        if (state) {
+            this._modelListState = state;
+        }
+        this._onModelsChanged(this._modelListState);
     }
 
     private _syncConfigOptions(configOptions: unknown): void {
         this._configOptions = Array.isArray(configOptions) ? configOptions : [];
-        this._onModelsChanged(buildModelListState(this._configOptions));
+        const fromConfig = buildModelListState(this._configOptions);
+        if (fromConfig) {
+            this._modelListState = fromConfig;
+        } else if (this._hermesModelsRaw) {
+            // Hermes sends empty configOptions on updates; keep native model list.
+            this._modelListState = buildModelListStateFromHermesModels(this._hermesModelsRaw);
+        }
+        this._onModelsChanged(this._modelListState);
+    }
+
+    private _applyHermesModelSelection(valueId: string): void {
+        if (!this._modelListState && this._hermesModelsRaw) {
+            this._modelListState = buildModelListStateFromHermesModels(this._hermesModelsRaw);
+        }
+        if (!this._modelListState) {
+            return;
+        }
+        const picked = this._modelListState.models.find(m => m.valueId === valueId);
+        this._modelListState = {
+            ...this._modelListState,
+            configId: HERMES_MODEL_CONFIG_ID,
+            currentValueId: valueId,
+            currentLabel: picked?.name ?? valueId,
+            fromAgent: true,
+        };
+        if (this._hermesModelsRaw && typeof this._hermesModelsRaw === 'object') {
+            const raw = this._hermesModelsRaw as Record<string, unknown>;
+            this._hermesModelsRaw = {
+                ...raw,
+                currentModelId: valueId,
+                current_model_id: valueId,
+            };
+        }
+        this._onModelsChanged(this._modelListState);
     }
 
     private async _findHermes(): Promise<string> {

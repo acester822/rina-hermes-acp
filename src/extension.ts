@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import { HermesChatProvider } from './chat/HermesChatProvider';
+import { initI18n, t } from './i18n';
 
 let chatProvider: HermesChatProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+    initI18n();
     console.log('Hermes Agent Chat activating...');
 
     // Register the chat webview provider
@@ -31,7 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('hermes.sendSelection', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.selection.isEmpty) {
-                vscode.window.showInformationMessage('Select some code first.');
+                vscode.window.showInformationMessage(t('selectCodeFirst'));
                 return;
             }
             const selection = editor.document.getText(editor.selection);
@@ -39,9 +41,8 @@ export function activate(context: vscode.ExtensionContext) {
             const line = editor.selection.start.line + 1;
             const text = `At ${fileName}:${line}\n\`\`\`\n${selection}\n\`\`\``;
 
-            // Open the sidebar and send the text
             vscode.commands.executeCommand('workbench.view.extension.hermes-sidebar');
-            chatProvider?.sendText(text);
+            chatProvider?.insertIntoInput(text);
         })
     );
 
