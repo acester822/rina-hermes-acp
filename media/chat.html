@@ -436,6 +436,7 @@ body {
         </div>
     </div>
     <button id="newChatBtn" title="New Chat">+ New</button>
+    <button id="clearChatBtn" title="Clear Messages" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:13px;padding:2px 6px">🗑</button>
 </div>
 <div id="status-bar">
     <span class="dot idle" id="statusDot"></span>
@@ -459,6 +460,7 @@ body {
             <span style="font-weight:600;font-size:12px">Hermes Logs</span>
             <div>
                 <button id="copyLogBtn" style="background:none;border:1px solid var(--border);color:var(--fg);cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:4px">Copy</button>
+                <button id="clearLogBtn" style="background:none;border:1px solid var(--border);color:var(--fg);cursor:pointer;padding:2px 8px;font-size:11px;border-radius:3px;margin-right:4px">Clear</button>
                 <button id="closeLogBtn" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:16px">✕</button>
             </div>
         </div>
@@ -510,7 +512,20 @@ body {
         logModal.style.display = 'none';
     });
     document.getElementById('copyLogBtn').addEventListener('click', function() {
-        navigator.clipboard.writeText(logs.join('\n'));
+        const text = logs.join('\n');
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+    document.getElementById('clearLogBtn').addEventListener('click', function() {
+        logs = [];
+        logBadge.style.display = 'none';
+        logContent.textContent = '';
     });
     logModal.addEventListener('click', function(e) {
         if (e.target === logModal) logModal.style.display = 'none';
@@ -697,6 +712,16 @@ body {
     });
 
     sendBtn.addEventListener('click', sendMessage);
+
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    clearChatBtn.addEventListener('click', function() {
+        messagesEl.innerHTML = '';
+        placeholder.style.display = 'block';
+        placeholder.textContent = 'Chat cleared.';
+        streamingMessageId = null;
+        thoughtMsgId = null;
+        toolCallMap = {};
+    });
 
     cancelBtn.addEventListener('click', function() {
         vscode.postMessage({ type: 'cancel' });
