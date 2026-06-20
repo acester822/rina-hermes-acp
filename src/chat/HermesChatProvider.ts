@@ -283,6 +283,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         this._handleNewChat();
     }
 
+    public sendText(text: string): void {
+        this._postMessage({ type: 'addMessage', role: 'user', text });
+        this._saveMessage('user', text);
+        this._acp?.sendMessage(text);
+    }
+
     public dispose(): void {
         this._acp?.dispose();
         this._acp = undefined;

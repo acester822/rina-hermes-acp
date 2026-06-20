@@ -177,8 +177,42 @@ body {
     font-size: 12px;
     color: var(--dim);
     font-style: italic;
-    padding: 2px 8px;
+    padding: 4px 8px;
     max-width: 100%;
+    cursor: pointer;
+    border-radius: 4px;
+    user-select: none;
+}
+.message.tool:hover {
+    background: var(--text-block);
+}
+.message.tool .label { display: none; }
+.message.tool .tool-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.message.tool .tool-arrow {
+    font-size: 10px;
+    transition: transform 0.15s;
+    display: inline-block;
+}
+.message.tool.collapsed .tool-arrow {
+    transform: rotate(-90deg);
+}
+.message.tool .tool-body {
+    margin-top: 4px;
+    font-style: normal;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--fg);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.message.tool.collapsed .tool-body {
+    display: none;
 }
 .message .label {
     font-size: 11px;
@@ -418,17 +452,41 @@ body {
         div.className = 'message ' + role;
         div.id = id;
 
-        if (role !== 'tool') {
-            const label = document.createElement('div');
-            label.className = 'label';
-            label.textContent = role === 'user' ? 'You' : 'Hermes';
-            div.appendChild(label);
+        if (role === 'tool' || role === 'thought') {
+            // Collapsible tool/thought message, default collapsed
+            div.classList.add('collapsed');
+            const header = document.createElement('div');
+            header.className = 'tool-header';
+            const arrow = document.createElement('span');
+            arrow.className = 'tool-arrow';
+            arrow.textContent = '▼';
+            header.appendChild(arrow);
+            const summary = document.createElement('span');
+            // Short summary: first line or first 60 chars
+            const firstLine = text.split('\n')[0] || text;
+            summary.textContent = firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine;
+            header.appendChild(summary);
+            div.appendChild(header);
+            const body = document.createElement('div');
+            body.className = 'tool-body';
+            body.textContent = text;
+            div.appendChild(body);
+            // Toggle collapse on click
+            div.addEventListener('click', function() {
+                this.classList.toggle('collapsed');
+            });
+        } else {
+            if (role !== 'tool') {
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.textContent = role === 'user' ? 'You' : 'Hermes';
+                div.appendChild(label);
+            }
+            const content = document.createElement('div');
+            content.className = 'content';
+            content.textContent = text;
+            div.appendChild(content);
         }
-
-        const content = document.createElement('div');
-        content.className = 'content';
-        content.textContent = text;
-        div.appendChild(content);
 
         // Mark as streaming if assistant message
         if (role === 'assistant') {
@@ -616,11 +674,17 @@ body {
                     if (thoughtMsgId) {
                         const el = document.getElementById(thoughtMsgId);
                         if (el) {
-                            el.querySelector('.content').textContent = msg.text;
+                            el.querySelector('.tool-body').textContent = msg.text;
+                            // Update summary too
+                            const summary = el.querySelector('.tool-header span:last-child');
+                            if (summary) {
+                                const firstLine = msg.text.split('\n')[0] || msg.text;
+                                summary.textContent = firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine;
+                            }
                             break;
                         }
                     }
-                    const id = addMessage('tool', `💭 ${msg.text}`);
+                    const id = addMessage('thought', `💭 ${msg.text}`);
                     thoughtMsgId = id;
                 } else {
                     addMessage(msg.role, msg.text);

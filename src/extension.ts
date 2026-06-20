@@ -27,6 +27,24 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('hermes.sendSelection', () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.selection.isEmpty) {
+                vscode.window.showInformationMessage('Select some code first.');
+                return;
+            }
+            const selection = editor.document.getText(editor.selection);
+            const fileName = editor.document.fileName;
+            const line = editor.selection.start.line + 1;
+            const text = `At ${fileName}:${line}\n\`\`\`\n${selection}\n\`\`\``;
+
+            // Open the sidebar and send the text
+            vscode.commands.executeCommand('workbench.view.extension.hermes-sidebar');
+            chatProvider?.sendText(text);
+        })
+    );
+
     console.log('Hermes Agent Chat activated');
 }
 

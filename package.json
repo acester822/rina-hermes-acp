@@ -43,8 +43,20 @@
       {
         "command": "hermes.openChat",
         "title": "Hermes: Open Chat"
+      },
+      {
+        "command": "hermes.sendSelection",
+        "title": "Send to Hermes Agent"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "hermes.sendSelection",
+          "group": "1_modification"
+        }
+      ]
+    },
     "configuration": {
       "title": "Hermes Agent Chat",
       "properties": {
