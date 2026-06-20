@@ -48,6 +48,63 @@ body {
     letter-spacing: 0.5px;
     color: var(--dim);
 }
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+#sessionPicker { position: relative; }
+#sessionBtn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+}
+#sessionBtn:hover { color: var(--fg); }
+.session-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-width: 220px;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.session-dropdown .dropdown-header {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+}
+.session-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+}
+.session-item:hover { background: var(--text-block); }
+.session-item .title { text-transform: none; letter-spacing: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.session-item .meta { font-size: 10px; color: var(--dim); margin-left: 8px; white-space: nowrap; }
+.session-item .delete-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 4px;
+    margin-left: 4px;
+}
+.session-item .delete-btn:hover { color: var(--error); }
 #header button {
     background: none;
     border: 1px solid var(--border);
@@ -288,7 +345,16 @@ body {
 </head>
 <body>
 <div id="header">
-    <span class="title">Hermes Agent</span>
+    <div class="header-left">
+        <span class="title">Hermes Agent</span>
+        <div class="session-picker" id="sessionPicker">
+            <button id="sessionBtn" title="Sessions">☰</button>
+            <div class="session-dropdown" id="sessionDropdown" style="display:none">
+                <div class="dropdown-header">Sessions</div>
+                <div id="sessionList"></div>
+            </div>
+        </div>
+    </div>
     <button id="newChatBtn" title="New Chat">+ New</button>
 </div>
 <div id="status-bar">
@@ -500,6 +566,44 @@ body {
         vscode.postMessage({ type: 'newChat' });
     });
 
+    // Session picker
+    const sessionBtn = document.getElementById('sessionBtn');
+    const sessionDropdown = document.getElementById('sessionDropdown');
+    sessionBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        sessionDropdown.style.display = sessionDropdown.style.display === 'none' ? 'block' : 'none';
+        vscode.postMessage({ type: 'getSessions' });
+    });
+    document.addEventListener('click', function() {
+        sessionDropdown.style.display = 'none';
+    });
+    sessionDropdown.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+
+    function renderSessionList(sessions) {
+        const list = document.getElementById('sessionList');
+        if (!sessions || sessions.length === 0) {
+            list.innerHTML = '<div class="session-item" style="color:var(--dim);cursor:default">No sessions yet</div>';
+            return;
+        }
+        list.innerHTML = sessions.map(s => {
+            const time = new Date(s.updatedAt || s.createdAt).toLocaleDateString();
+            return '<div class="session-item" data-id="' + s.id + '">' +
+                '<span class="title" title="' + s.title.replace(/"/g,'&quot;') + '">' + s.title + '</span>' +
+                '<span class="meta">' + s.messageCount + ' msgs · ' + time + '</span>' +
+                '<button class="delete-btn" data-id="' + s.id + '" title="Delete session">✕</button>' +
+                '</div>';
+        }).join('');
+        // Click to view is disabled for now — future: session switching
+        list.querySelectorAll('.delete-btn').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                vscode.postMessage({ type: 'deleteSession', sessionId: this.dataset.id });
+            });
+        });
+    }
+
     // Messages from extension
     window.addEventListener('message', function(event) {
         const msg = event.data;
@@ -553,6 +657,10 @@ body {
 
             case 'newChat':
                 newChat();
+                break;
+
+            case 'sessionList':
+                renderSessionList(msg.sessions);
                 break;
         }
     });
