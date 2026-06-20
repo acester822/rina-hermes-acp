@@ -631,6 +631,7 @@ body {
                 updateStatus(msg.status, msg.message);
                 if (msg.status === 'ready') {
                     finishStreaming();
+                    canSend = true;
                     inputEl.disabled = false;
                     sendBtn.disabled = false;
                     inputEl.focus();
@@ -645,12 +646,15 @@ body {
                         processFileRefs(el);
                     });
                 } else if (msg.status === 'prompting') {
+                    canSend = false;
                     cancelBtn.style.display = '';
                 } else if (msg.status === 'error') {
+                    canSend = false;
                     finishStreaming();
                     placeholder.textContent = msg.message || 'Connection error. Try again later.';
                     placeholder.style.display = 'block';
                 } else if (msg.status === 'idle') {
+                    canSend = false;
                     finishStreaming();
                 }
                 break;
