@@ -24,6 +24,7 @@ export type FileSystemHandler = {
     readTextFile: (path: string) => Promise<string>;
     writeTextFile: (path: string, content: string) => Promise<void>;
 };
+export type TerminalHandler = (command: string, cwd: string) => void;
 
 interface TerminalInstance {
     process: ChildProcess;
@@ -46,6 +47,7 @@ export class AcpClient {
     private _onPermission: PermissionHandler;
     private _onConnectionLost: ConnectionLostHandler;
     private _onFileSystem: FileSystemHandler;
+    private _onTerminal: TerminalHandler;
     private _terminals: Map<string, TerminalInstance> = new Map();
     private _nextTerminalId: number = 1;
     private _responseBuffer: string = '';
@@ -64,13 +66,15 @@ export class AcpClient {
         onStatus: StatusHandler,
         onPermission?: PermissionHandler,
         onConnectionLost?: ConnectionLostHandler,
-        onFileSystem?: FileSystemHandler
+        onFileSystem?: FileSystemHandler,
+        onTerminal?: TerminalHandler
     ) {
         this._onMessage = onMessage;
         this._onStatus = onStatus;
         this._onPermission = onPermission || (async () => true);
         this._onConnectionLost = onConnectionLost || (() => {});
         this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
+        this._onTerminal = onTerminal || (() => {});
     }
 
     get status(): AcpStatus {
@@ -303,6 +307,8 @@ export class AcpClient {
         const id = `term_${this._nextTerminalId++}`;
         const cmd = params.command;
         const cwd = params.cwd || process.cwd();
+
+        this._onTerminal(cmd, cwd); // mirror to VS Code terminal
 
         let stdout = '';
         let stderr = '';

@@ -200,9 +200,17 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     const uri = vscode.Uri.file(p);
                     await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
                 },
+            },
+            (cmd: string, cwd: string) => {
+                this._log(`Terminal: ${cmd.slice(0, 80)}`);
+                const terminal = vscode.window.createTerminal({
+                    name: `Hermes: ${cmd.slice(0, 30)}`,
+                    cwd,
+                });
+                terminal.sendText(cmd);
+                terminal.show(false);
             }
         );
-
         try {
             await this._acp.start(cwd, configPath);
         } catch {
