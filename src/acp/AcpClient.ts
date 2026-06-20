@@ -416,9 +416,16 @@ export class AcpClient {
     private _handleTerminalOutput(params: any): any {
         const term = this._terminals.get(params.terminalId);
         if (!term) return { output: '', truncated: false, exitStatus: {} };
+        let output = (term.stdout + '\n' + term.stderr).replace(/^\n/, '');
+        const byteLimit = params.outputByteLimit;
+        let truncated = false;
+        if (byteLimit && Buffer.byteLength(output, 'utf-8') > byteLimit) {
+            output = Buffer.from(output, 'utf-8').subarray(0, byteLimit).toString('utf-8');
+            truncated = true;
+        }
         return {
-            output: (term.stdout + '\n' + term.stderr).replace(/^\n/, ''),
-            truncated: false,
+            output,
+            truncated,
             exitStatus: term.exitCode !== null ? { exitCode: term.exitCode } : undefined,
         };
     }

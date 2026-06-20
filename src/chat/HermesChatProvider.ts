@@ -588,7 +588,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _isPathAllowed(p: string): boolean {
         if (!path.isAbsolute(p)) return true; // relative paths are fine
         const folders = vscode.workspace.workspaceFolders;
-        if (!folders || folders.length === 0) return true; // no workspace = allow all
-        return folders.some(f => p.startsWith(f.uri.fsPath));
+        if (folders && folders.length > 0) {
+            return folders.some(f => p.startsWith(f.uri.fsPath));
+        }
+        // No workspace: restrict to cwd
+        const config = vscode.workspace.getConfiguration('hermes');
+        const configCwd = config.get<string>('cwd');
+        const cwd = configCwd || process.cwd();
+        return p.startsWith(cwd);
     }
 }

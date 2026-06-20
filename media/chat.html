@@ -654,13 +654,30 @@ body {
         return id;
     }
 
+    function renderMarkdown(text) {
+        const html = marked.parse(text);
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        // Sanitize: remove event handlers and javascript: links
+        div.querySelectorAll('*').forEach(function(n) {
+            if (!n.attributes) return;
+            for (let i = n.attributes.length - 1; i >= 0; i--) {
+                const attr = n.attributes[i];
+                if (attr.name.startsWith('on') || (attr.name === 'href' && attr.value.toLowerCase().startsWith('javascript:'))) {
+                    n.removeAttribute(attr.name);
+                }
+            }
+        });
+        return div.innerHTML;
+    }
+
     function finishStreaming() {
         if (streamingMessageId) {
             const el = document.getElementById(streamingMessageId);
             if (el) {
                 el.classList.remove('streaming');
                 const text = el.querySelector('.content').textContent;
-                el.querySelector('.content').innerHTML = marked.parse(text);
+                el.querySelector('.content').innerHTML = renderMarkdown(text);
                 el.querySelectorAll('pre code').forEach((block) => {
                     hljs.highlightElement(block);
                     addInsertButton(block);
@@ -969,7 +986,7 @@ body {
                         window._hermesRendered = true;
                         document.querySelectorAll('.message.assistant .content').forEach((el) => {
                             const text = el.textContent || '';
-                            el.innerHTML = marked.parse(text);
+                            el.innerHTML = renderMarkdown(text);
                             el.querySelectorAll('pre code').forEach((b) => {
                                 hljs.highlightElement(b);
                                 addInsertButton(b);
