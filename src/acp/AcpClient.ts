@@ -160,7 +160,8 @@ export class AcpClient {
 
             this._process.stderr?.on('data', (chunk: Buffer) => {
                 const line = chunk.toString().trim();
-                if (line) {
+                // Show only actual errors, not hermes diagnostic noise
+                if (line && (line.includes('error') || line.includes('Error') || line.includes('ERROR') || line.includes('traceback') || line.includes('Traceback'))) {
                     this._onMessage('tool', `⚠️ ${line}`);
                 }
             });
