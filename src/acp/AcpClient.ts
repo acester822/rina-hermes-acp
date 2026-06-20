@@ -25,6 +25,7 @@ export type FileSystemHandler = {
     writeTextFile: (path: string, content: string) => Promise<void>;
 };
 export type TerminalHandler = (command: string, cwd: string) => void;
+export type LogHandler = (text: string) => void;
 
 interface TerminalInstance {
     process: ChildProcess;
@@ -48,6 +49,7 @@ export class AcpClient {
     private _onConnectionLost: ConnectionLostHandler;
     private _onFileSystem: FileSystemHandler;
     private _onTerminal: TerminalHandler;
+    private _onLog: LogHandler;
     private _terminals: Map<string, TerminalInstance> = new Map();
     private _nextTerminalId: number = 1;
     private _responseBuffer: string = '';
@@ -79,7 +81,10 @@ export class AcpClient {
         this._onConnectionLost = onConnectionLost || (() => {});
         this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
         this._onTerminal = onTerminal || (() => {});
+        this._onLog = () => {};
     }
+
+    set onLog(handler: LogHandler) { this._onLog = handler; }
 
     get status(): AcpStatus {
         return this._status;
@@ -160,9 +165,8 @@ export class AcpClient {
 
             this._process.stderr?.on('data', (chunk: Buffer) => {
                 const line = chunk.toString().trim();
-                // Show only actual errors, not hermes diagnostic noise
-                if (line && (line.includes('error') || line.includes('Error') || line.includes('ERROR') || line.includes('traceback') || line.includes('Traceback'))) {
-                    this._onMessage('tool', `⚠️ ${line}`);
+                if (line) {
+                    this._onLog(line);
                 }
             });
 

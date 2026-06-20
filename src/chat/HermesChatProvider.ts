@@ -277,6 +277,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 terminal.show(false);
             }
         );
+        this._acp.onLog = (line: string) => {
+            this._postMessage({ type: 'log', line });
+        };
         try {
             await this._acp.start(cwd, configPath, configProfile);
         } catch {
