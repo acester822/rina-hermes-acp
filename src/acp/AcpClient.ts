@@ -20,6 +20,10 @@ export type MessageHandler = (role: 'user' | 'assistant' | 'tool' | 'thought', t
 export type StatusHandler = (status: AcpStatus, message?: string) => void;
 export type PermissionHandler = (prompt: string) => Promise<boolean>;
 export type ConnectionLostHandler = () => void;
+export type FileSystemHandler = {
+    readTextFile: (path: string) => Promise<string>;
+    writeTextFile: (path: string, content: string) => Promise<void>;
+};
 
 export class AcpClient {
     private _process: ChildProcess | null = null;
@@ -31,6 +35,7 @@ export class AcpClient {
     private _onStatus: StatusHandler;
     private _onPermission: PermissionHandler;
     private _onConnectionLost: ConnectionLostHandler;
+    private _onFileSystem: FileSystemHandler;
     private _responseBuffer: string = '';
     private _thoughtBuffer: string = '';
 
@@ -46,12 +51,14 @@ export class AcpClient {
         onMessage: MessageHandler,
         onStatus: StatusHandler,
         onPermission?: PermissionHandler,
-        onConnectionLost?: ConnectionLostHandler
+        onConnectionLost?: ConnectionLostHandler,
+        onFileSystem?: FileSystemHandler
     ) {
         this._onMessage = onMessage;
         this._onStatus = onStatus;
         this._onPermission = onPermission || (async () => true);
         this._onConnectionLost = onConnectionLost || (() => {});
+        this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
     }
 
     get status(): AcpStatus {
@@ -142,6 +149,16 @@ export class AcpClient {
                 this._handleSessionUpdate(params);
             });
 
+            // Register fs capability handlers
+            this._app.onRequest(methods.client.fs.readTextFile as any, async ({ params }: any) => {
+                const content = await this._onFileSystem.readTextFile(params.path);
+                return { content };
+            });
+
+            this._app.onRequest(methods.client.fs.writeTextFile as any, async ({ params }: any) => {
+                await this._onFileSystem.writeTextFile(params.path, params.content);
+            });
+
             this._conn = this._app.connect(stream);
             const ctx = this._conn.agent;
 
@@ -150,7 +167,7 @@ export class AcpClient {
                 capabilities: {},
                 clientCapabilities: {
                     session: { update: true },
-                    fs: { readTextFile: false, writeTextFile: false },
+                    fs: { readTextFile: true, writeTextFile: true },
                     terminal: false
                 }
             } as any);

@@ -72,7 +72,18 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 );
                 return result === 'Allow';
             },
-            () => { this._acp = undefined; }
+            () => { this._acp = undefined; },
+            {
+                readTextFile: async (path: string) => {
+                    const uri = vscode.Uri.file(path);
+                    const bytes = await vscode.workspace.fs.readFile(uri);
+                    return new TextDecoder().decode(bytes);
+                },
+                writeTextFile: async (path: string, content: string) => {
+                    const uri = vscode.Uri.file(path);
+                    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
+                },
+            }
         );
 
         try {
