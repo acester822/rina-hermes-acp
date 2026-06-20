@@ -57,8 +57,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const configPath = config.get<string>('path') || undefined;
         const configCwd = config.get<string>('cwd') || undefined;
 
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const cwd = configCwd || workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+        const cwd = this._resolveCwd(configCwd);
 
         this._acp = new AcpClient(
             (role, text) => this._postMessage({ type: 'addMessage', role, text }),
@@ -103,8 +102,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private async _handleNewChat(): Promise<void> {
         const config = vscode.workspace.getConfiguration('hermes');
         const configCwd = config.get<string>('cwd') || undefined;
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const cwd = configCwd || workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+        const cwd = this._resolveCwd(configCwd);
 
         if (this._acp) {
             await this._acp.newSession(cwd);
@@ -131,5 +129,23 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _getHtml(): string {
         const htmlPath = path.join(this._extensionUri.fsPath, 'media', 'chat.html');
         return fs.readFileSync(htmlPath, 'utf-8');
+    }
+
+    /** Resolve workspace cwd: active editor → first folder → home */
+    private _resolveCwd(configCwd?: string): string {
+        if (configCwd) return configCwd;
+
+        // Prefer the active editor's workspace folder
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+            if (folder) return folder.uri.fsPath;
+        }
+
+        // Fall back to first workspace folder
+        const folders = vscode.workspace.workspaceFolders;
+        if (folders && folders.length > 0) return folders[0].uri.fsPath;
+
+        return process.cwd();
     }
 }
