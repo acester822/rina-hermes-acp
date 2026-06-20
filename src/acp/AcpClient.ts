@@ -229,8 +229,11 @@ export class AcpClient {
                 clientCapabilities: {
                     fs: { readTextFile: true, writeTextFile: true },
                     terminal: true
-                } as any
+                }
             } as any);
+            // Note: `as any` is needed because ClientContext.request() type
+            // doesn't include the fs/terminal capability fields in its schema type.
+            // When ACP SDK schema updates, this cast can be removed.
 
             const builder = ctx.buildSession(cwd);
             this._session = await builder.start();
@@ -293,6 +296,7 @@ export class AcpClient {
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             this._transitionTo('error', `New session failed: ${msg}`);
+            this._onConnectionLost();
         }
     }
 
@@ -326,16 +330,19 @@ export class AcpClient {
     private _handleTerminalCreate(params: any): any {
         const id = `term_${this._nextTerminalId++}`;
         const cmd = params.command;
+        const args = params.args || [];
         const cwd = params.cwd || process.cwd();
+        const env = params.env ? { ...process.env, ...params.env } : process.env;
 
         this._onTerminal(cmd, cwd); // mirror to VS Code terminal
 
         let resolveExit: () => void = () => {};
         const exited = new Promise<void>((r) => { resolveExit = r; });
 
-        const proc = spawn(cmd, [], {
+        const proc = spawn(cmd, args, {
             cwd,
-            shell: true,
+            shell: args.length === 0,
+            env,
             stdio: ['pipe', 'pipe', 'pipe'],
         });
 

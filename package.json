@@ -2,7 +2,7 @@
   "name": "hermes-agent-chat",
   "displayName": "Hermes Agent Chat",
   "description": "Chat with Hermes Agent directly inside VS Code",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "publisher": "jove-rina",
   "license": "MIT",
   "engines": {

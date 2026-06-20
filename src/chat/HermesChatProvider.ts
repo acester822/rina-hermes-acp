@@ -249,12 +249,18 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             {
                 readTextFile: async (p: string) => {
                     this._log(`fs.readTextFile: ${p}`);
+                    if (!this._isPathAllowed(p)) {
+                        throw new Error(`Access denied: '${p}' is outside workspace folders`);
+                    }
                     const uri = vscode.Uri.file(p);
                     const bytes = await vscode.workspace.fs.readFile(uri);
                     return new TextDecoder().decode(bytes);
                 },
                 writeTextFile: async (p: string, content: string) => {
                     this._log(`fs.writeTextFile: ${p} (${content.length} chars)`);
+                    if (!this._isPathAllowed(p)) {
+                        throw new Error(`Access denied: '${p}' is outside workspace folders`);
+                    }
                     const uri = vscode.Uri.file(p);
                     await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
                 },
@@ -430,5 +436,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         const folders = vscode.workspace.workspaceFolders;
         if (folders && folders.length > 0) return folders[0].uri.fsPath;
         return process.cwd();
+    }
+
+    /** Check if path is within workspace folders. Allows absolute paths only if inside workspace. */
+    private _isPathAllowed(p: string): boolean {
+        if (!path.isAbsolute(p)) return true; // relative paths are fine
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders || folders.length === 0) return true; // no workspace = allow all
+        return folders.some(f => p.startsWith(f.uri.fsPath));
     }
 }

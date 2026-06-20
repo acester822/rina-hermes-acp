@@ -784,16 +784,19 @@ body {
                     inputEl.disabled = false;
                     sendBtn.disabled = false;
                     inputEl.focus();
-                    // Re-render any restored messages as markdown
-                    document.querySelectorAll('.message.assistant .content').forEach((el) => {
-                        const text = el.textContent || '';
-                        el.innerHTML = marked.parse(text);
-                        el.querySelectorAll('pre code').forEach((b) => {
-                            hljs.highlightElement(b);
-                            addInsertButton(b);
+                    // Re-render any restored messages as markdown (one-shot)
+                    if (!window._hermesRendered) {
+                        window._hermesRendered = true;
+                        document.querySelectorAll('.message.assistant .content').forEach((el) => {
+                            const text = el.textContent || '';
+                            el.innerHTML = marked.parse(text);
+                            el.querySelectorAll('pre code').forEach((b) => {
+                                hljs.highlightElement(b);
+                                addInsertButton(b);
+                            });
+                            processFileRefs(el);
                         });
-                        processFileRefs(el);
-                    });
+                    }
                 } else if (msg.status === 'prompting') {
                     canSend = false;
                     cancelBtn.style.display = '';
