@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- Background -->
-  <rect width="256" height="256" rx="40" fill="#7c3aed"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="256" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="url(#g)"/>
 
   <!-- Chat bubble -->
-  <rect x="48" y="64" width="160" height="112" rx="16" fill="#fff" opacity="0.95"/>
-  <polygon points="80,176 96,156 48,176" fill="#fff" opacity="0.95"/>
+  <rect x="48" y="64" width="160" height="120" rx="20" fill="#fff"/>
 
-  <!-- Wing symbol (minimal) -->
-  <path d="M72 100 Q96 88 128 96" stroke="#7c3aed" stroke-width="3" fill="none" stroke-linecap="round"/>
-  <path d="M76 96 Q104 80 136 90" stroke="#7c3aed" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-
-  <!-- AI cursor -->
-  <rect x="104" y="124" width="48" height="3" rx="1.5" fill="#7c3aed" opacity="0.6"/>
+  <!-- Lightning bolt inside bubble -->
+  <polygon points="140,78 84,136 116,136 100,178 164,114 128,114 140,78" fill="#6366f1"/>
 </svg>
