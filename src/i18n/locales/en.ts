@@ -70,7 +70,7 @@ export const en: LocaleStrings = {
     copy: 'Copy',
     clear: 'Clear',
     noLogs: '(no logs yet)',
-    aboutTitle: 'About Hermes AI Chat',
+    aboutTitle: 'About Rina Hermes ACP',
     helpTitle: 'Help — How to start ACP',
 
     aboutVersion: 'Version',

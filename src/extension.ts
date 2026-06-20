@@ -6,7 +6,7 @@ let chatProvider: HermesChatProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     initI18n();
-    console.log('Hermes AI Chat activating...');
+    console.log('Rina Hermes ACP activating...');
 
     // Register the chat webview provider
     chatProvider = new HermesChatProvider(context.extensionUri, context);
@@ -46,7 +46,7 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    console.log('Hermes AI Chat activated');
+    console.log('Rina Hermes ACP activated');
 }
 
 export function deactivate() {

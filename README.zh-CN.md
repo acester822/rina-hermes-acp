@@ -1,4 +1,4 @@
-# Hermes AI Chat
+# Rina Hermes ACP
 
 **在 VS Code 中直接与 [Hermes Agent](https://hermes-agent.nousresearch.com) 对话 —— 无需切换终端。**
 
@@ -8,7 +8,7 @@
 
 ## 产品简介
 
-Hermes AI Chat 是一款 VS Code 扩展，将本地 Hermes Agent 接入编辑器侧边栏。你不必在终端和编辑器之间来回切换，即可在写代码的地方完成问答、工具调用与迭代。
+Rina Hermes ACP 是一款 VS Code 扩展，将本地 Hermes Agent 接入编辑器侧边栏。你不必在终端和编辑器之间来回切换，即可在写代码的地方完成问答、工具调用与迭代。
 
 扩展通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 连接本地 `hermes acp` 子进程：回复实时流式输出并支持 Markdown 渲染；代码块可一键插入编辑器；消息中的文件路径可直接在 VS Code 中打开。
 
@@ -41,7 +41,7 @@ Hermes AI Chat 是一款 VS Code 扩展，将本地 Hermes Agent 接入编辑器
 
 1. 打开 VS Code
 2. 进入 **扩展**（`Ctrl+Shift+X` / `Cmd+Shift+X`）
-3. 搜索 **Hermes AI Chat** 或 **JoveRina**
+3. 搜索 **Rina Hermes ACP** 或 **JoveRina**
 4. 点击 **安装**
 
 ### 验证安装
@@ -191,7 +191,7 @@ Hermes AI Chat 是一款 VS Code 扩展，将本地 Hermes Agent 接入编辑器
 
 **提交 BUG**
 
-1. 打开 [GitHub Issues](https://github.com/jove-rina/hermes-ai-chat/issues)
+1. 打开 [GitHub Issues](https://github.com/jove-rina/rina-hermes-acp/issues)
 2. 点击 **New issue**
 3. 请尽量包含：
    - VS Code 版本
@@ -203,12 +203,12 @@ Hermes AI Chat 是一款 VS Code 扩展，将本地 Hermes Agent 接入编辑器
 
 **提交前**
 
-- 先搜索 [已有 Issue](https://github.com/jove-rina/hermes-ai-chat/issues)，避免重复
+- 先搜索 [已有 Issue](https://github.com/jove-rina/rina-hermes-acp/issues)，避免重复
 - 确认 Hermes 在 VS Code 外可正常工作（例如在终端运行 `hermes acp`）
 
 **相关链接**
 
-- 代码仓库：[github.com/jove-rina/hermes-ai-chat](https://github.com/jove-rina/hermes-ai-chat)
+- 代码仓库：[github.com/jove-rina/rina-hermes-acp](https://github.com/jove-rina/rina-hermes-acp)
 - Hermes Agent 文档：[hermes-agent.nousresearch.com](https://hermes-agent.nousresearch.com)
 
 ---

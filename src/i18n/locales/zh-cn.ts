@@ -70,7 +70,7 @@ export const zhCn: LocaleStrings = {
     copy: '复制',
     clear: '清空',
     noLogs: '（暂无日志）',
-    aboutTitle: '关于 Hermes AI Chat',
+    aboutTitle: '关于 Rina Hermes ACP',
     helpTitle: '帮助 — 如何启动 ACP',
 
     aboutVersion: '版本',

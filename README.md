@@ -1,4 +1,4 @@
-# Hermes AI Chat
+# Rina Hermes ACP
 
 **Chat with [Hermes Agent](https://hermes-agent.nousresearch.com) directly inside VS Code — no terminal switching required.**
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Hermes AI Chat is a VS Code extension that brings your local Hermes Agent into the editor sidebar. Instead of juggling a separate terminal, you get a full chat experience right where you write code.
+Rina Hermes ACP is a VS Code extension that brings your local Hermes Agent into the editor sidebar. Instead of juggling a separate terminal, you get a full chat experience right where you write code.
 
 The extension connects to a local `hermes acp` subprocess over the [Agent Client Protocol (ACP)](https://agentclientprotocol.com), so you can ask questions, run tools, and iterate on code without leaving the IDE. Replies stream in real time with Markdown rendering; code blocks can be inserted into the editor with one click; file paths in messages open directly in VS Code.
 
@@ -41,7 +41,7 @@ The extension connects to a local `hermes acp` subprocess over the [Agent Client
 
 1. Open VS Code.
 2. Go to **Extensions** (`Ctrl+Shift+X` / `Cmd+Shift+X`).
-3. Search for **Hermes AI Chat** or **JoveRina**.
+3. Search for **Rina Hermes ACP** or **JoveRina**.
 4. Click **Install**.
 
 ### Verify installation
@@ -191,7 +191,7 @@ We welcome issues, feature requests, and pull requests.
 
 **Report a bug**
 
-1. Go to [GitHub Issues](https://github.com/jove-rina/hermes-ai-chat/issues)
+1. Go to [GitHub Issues](https://github.com/jove-rina/rina-hermes-acp/issues)
 2. Click **New issue**
 3. Include:
    - VS Code version
@@ -203,12 +203,12 @@ We welcome issues, feature requests, and pull requests.
 
 **Before filing**
 
-- Search [existing issues](https://github.com/jove-rina/hermes-ai-chat/issues) to avoid duplicates
+- Search [existing issues](https://github.com/jove-rina/rina-hermes-acp/issues) to avoid duplicates
 - Confirm Hermes works outside VS Code (e.g. `hermes acp` in a terminal)
 
 **Other links**
 
-- Repository: [github.com/jove-rina/hermes-ai-chat](https://github.com/jove-rina/hermes-ai-chat)
+- Repository: [github.com/jove-rina/rina-hermes-acp](https://github.com/jove-rina/rina-hermes-acp)
 - Hermes Agent docs: [hermes-agent.nousresearch.com](https://hermes-agent.nousresearch.com)
 
 ---
