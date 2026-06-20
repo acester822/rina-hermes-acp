@@ -21,6 +21,7 @@ import {
     shouldUseHermesSetModel,
     type ModelListState
 } from './modelConfig';
+import type { SessionMcpServer } from './mcpConfig';
 
 export type AcpStatus = 'idle' | 'connecting' | 'ready' | 'prompting' | 'error';
 export type { ModelListState } from './modelConfig';
@@ -28,7 +29,21 @@ export type ModelsChangedHandler = (models: ModelListState | null) => void;
 
 export type MessageHandler = (role: 'user' | 'assistant' | 'tool' | 'thought', text: string, toolCallId?: string) => void;
 export type StatusHandler = (status: AcpStatus, message?: string) => void;
-export type PermissionHandler = (prompt: string) => Promise<boolean>;
+export interface PermissionOption {
+    optionId: string;
+    name: string;
+    kind?: string;
+}
+
+export interface PermissionRequest {
+    title: string;
+    detail?: string;
+    options: PermissionOption[];
+    toolCallId?: string;
+}
+
+/** Resolves with the selected optionId, or null when cancelled. */
+export type PermissionHandler = (request: PermissionRequest) => Promise<string | null>;
 export type ConnectionLostHandler = () => void;
 export type FileSystemHandler = {
     readTextFile: (path: string) => Promise<string>;
@@ -38,6 +53,10 @@ export type TerminalHandler = (command: string, args: string[], cwd: string) => 
 export type LogHandler = (text: string) => void;
 export type TokenUsage = { used: number; size: number };
 export type UsageHandler = (usage: TokenUsage) => void;
+/** Resolves MCP servers for ACP session/new (from editor mcp.json). */
+export type McpServersResolver = (cwd: string) => SessionMcpServer[];
+/** Called when an assistant/thought segment ends (tool call, permission, etc.). */
+export type SegmentEndHandler = () => void;
 
 interface TerminalInstance {
     process: ChildProcess;
@@ -47,6 +66,46 @@ interface TerminalInstance {
     exitSignal: string | null;
     exited: Promise<void>;
     resolveExit: () => void;
+}
+
+function readTextFromContentBlock(block: unknown): string {
+    if (!block || typeof block !== 'object') {
+        return '';
+    }
+    const record = block as Record<string, unknown>;
+    if (typeof record.text === 'string') {
+        return record.text;
+    }
+    const nested = record.content;
+    if (nested && typeof nested === 'object' && typeof (nested as { text?: unknown }).text === 'string') {
+        return (nested as { text: string }).text;
+    }
+    return '';
+}
+
+function extractPermissionDetail(toolCall: unknown): string | undefined {
+    if (!toolCall || typeof toolCall !== 'object') {
+        return undefined;
+    }
+    const tc = toolCall as Record<string, unknown>;
+    const parts: string[] = [];
+    const rawInput = tc.rawInput ?? tc.raw_input;
+    if (typeof rawInput === 'string' && rawInput.trim()) {
+        parts.push(rawInput.trim());
+    }
+    const content = tc.content;
+    if (typeof content === 'string' && content.trim()) {
+        parts.push(content.trim());
+    } else if (Array.isArray(content)) {
+        const text = content.map(readTextFromContentBlock).filter(Boolean).join('\n').trim();
+        if (text) {
+            parts.push(text);
+        }
+    }
+    if (parts.length === 0) {
+        return undefined;
+    }
+    return parts.join('\n\n');
 }
 
 export class AcpClient {
@@ -72,6 +131,8 @@ export class AcpClient {
     private _hermesModelsRaw: unknown = null;
     private _onModelsChanged: ModelsChangedHandler;
     private _onUsage: UsageHandler;
+    private _onSegmentEnd: SegmentEndHandler;
+    private _resolveMcpServers: McpServersResolver;
 
     private static readonly VALID: Record<AcpStatus, AcpStatus[]> = {
         idle:        ['connecting'],
@@ -93,17 +154,25 @@ export class AcpClient {
         onFileSystem?: FileSystemHandler,
         onTerminal?: TerminalHandler,
         onUsage?: UsageHandler,
-        onModelsChanged?: ModelsChangedHandler
+        onModelsChanged?: ModelsChangedHandler,
+        onSegmentEnd?: SegmentEndHandler,
+        resolveMcpServers?: McpServersResolver
     ) {
         this._onMessage = onMessage;
         this._onStatus = onStatus;
-        this._onPermission = onPermission || (async () => true);
+        this._onPermission = onPermission || (async (request) => {
+            const allow = request.options.find(o =>
+                o.kind?.startsWith('allow') || o.optionId.startsWith('allow'));
+            return allow?.optionId ?? request.options[0]?.optionId ?? null;
+        });
         this._onConnectionLost = onConnectionLost || (() => {});
         this._onFileSystem = onFileSystem || { readTextFile: async () => '', writeTextFile: async () => {} };
         this._onTerminal = onTerminal || (() => {});
         this._onLog = () => {};
         this._onUsage = onUsage || (() => {});
         this._onModelsChanged = onModelsChanged || (() => {});
+        this._onSegmentEnd = onSegmentEnd || (() => {});
+        this._resolveMcpServers = resolveMcpServers || (() => []);
     }
 
     set onLog(handler: LogHandler) { this._onLog = handler; }
@@ -199,23 +268,27 @@ export class AcpClient {
             this._app = client({ name: 'hermes-vscode' });
 
             this._app.onRequest('session/request_permission', async ({ params }) => {
+                this._endAssistantSegment();
                 const p = params as any;
                 const toolCall = p.toolCall;
                 const title = toolCall?.title || p.description || p.message || 'Unknown operation';
-                const options = p.options || [];
-                if (options.length > 0) {
-                    const approved = await this._onPermission(title);
-                    if (approved) {
-                        const allowOpt = options.find((o: any) =>
-                            o.optionId?.startsWith('allow') || o.optionId === 'allow_once');
-                        return { outcome: { outcome: 'selected', optionId: allowOpt?.optionId ?? options[0]?.optionId ?? 'allow' } } as any;
-                    }
-                    const rejectOpt = options.find((o: any) =>
-                        o.optionId?.startsWith('reject') || o.optionId === 'deny');
-                    if (rejectOpt) {
-                        return { outcome: { outcome: 'selected', optionId: rejectOpt.optionId } } as any;
-                    }
+                const detail = extractPermissionDetail(toolCall);
+                const options: PermissionOption[] = (p.options || []).map((o: any) => ({
+                    optionId: String(o.optionId ?? ''),
+                    name: String(o.name || o.optionId || ''),
+                    kind: o.kind ? String(o.kind) : undefined,
+                })).filter((o: PermissionOption) => o.optionId);
+                if (options.length === 0) {
                     return { outcome: { outcome: 'cancelled' } } as any;
+                }
+                const selectedId = await this._onPermission({
+                    title,
+                    detail,
+                    options,
+                    toolCallId: toolCall?.toolCallId,
+                });
+                if (selectedId && options.some(o => o.optionId === selectedId)) {
+                    return { outcome: { outcome: 'selected', optionId: selectedId } } as any;
                 }
                 return { outcome: { outcome: 'cancelled' } } as any;
             });
@@ -266,7 +339,7 @@ export class AcpClient {
             // doesn't include the fs/terminal capability fields in its schema type.
             // When ACP SDK schema updates, this cast can be removed.
 
-            const builder = ctx.buildSession(cwd);
+            const builder = this._conn.agent.buildSession(this._buildNewSessionRequest(cwd));
             this._session = await builder.start();
             this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
@@ -364,7 +437,7 @@ export class AcpClient {
             this._session?.dispose();
             this._responseBuffer = '';
             this._thoughtBuffer = '';
-            const builder = this._conn.agent.buildSession(cwd);
+            const builder = this._conn.agent.buildSession(this._buildNewSessionRequest(cwd));
             this._session = await builder.start();
             this._syncSessionModels(this._session.newSessionResponse);
             this._transitionTo('ready');
@@ -520,6 +593,7 @@ export class AcpClient {
             }
 
             case 'tool_call':
+                this._endAssistantSegment();
                 this._onMessage('tool', `🔧 ${update.title}`, update.toolCallId);
                 break;
 
@@ -632,6 +706,19 @@ export class AcpClient {
             'Hermes not found. Install:\n' +
             '  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash'
         );
+    }
+
+    /** Finalize the current assistant/thought stream so the next chunk starts fresh. */
+    private _endAssistantSegment(): void {
+        this._responseBuffer = '';
+        this._thoughtBuffer = '';
+        this._onSegmentEnd();
+    }
+
+    private _buildNewSessionRequest(cwd: string): { cwd: string; mcpServers: SessionMcpServer[] } {
+        const mcpServers = this._resolveMcpServers(cwd);
+        this._onLog(`session/new cwd=${cwd} mcpServers=${mcpServers.length}`);
+        return { cwd, mcpServers };
     }
 
     private _transitionTo(status: AcpStatus, message?: string): boolean {

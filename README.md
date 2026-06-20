@@ -195,7 +195,7 @@ We welcome issues, feature requests, and pull requests.
 2. Click **New issue**
 3. Include:
    - VS Code version
-   - Extension version (`0.2.2` or later)
+   - Extension version (`0.2.5` or later)
    - Hermes Agent version (`hermes --version`)
    - Steps to reproduce
    - Expected vs. actual behavior

@@ -1,16 +1,32 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AcpClient, AcpStatus, ModelListState, TokenUsage } from '../acp/AcpClient';
+import { AcpClient, AcpStatus, ModelListState, PermissionRequest, TokenUsage } from '../acp/AcpClient';
 import { buildFallbackModelListState, isRuntimeModelSource } from '../acp/modelConfig';
+import { resolveMcpServersForSession } from '../acp/mcpConfig';
 import { getLocale, getWebviewLocale, initI18n, localizeStatusMessage, t } from '../i18n';
+import { resolvePermissionOptionLabel } from '../i18n/permissionOptions';
 import { SupportedLocale } from '../i18n/types';
 import { WEBVIEW_LOCALE_HELPER } from '../i18n/format';
+
+interface StoredPermissionOption {
+    optionId: string;
+    name: string;
+    kind?: string;
+}
 
 interface ChatMessage {
     role: string;
     text: string;
     timestamp: number;
+    permissionId?: string;
+    title?: string;
+    detail?: string;
+    options?: StoredPermissionOption[];
+    resolved?: boolean;
+    outcome?: 'selected' | 'cancelled';
+    selectedOptionId?: string;
+    selectedLabel?: string;
 }
 
 interface SessionInfo {
@@ -52,6 +68,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _tokenUsage: TokenUsage | null = null;
     private _webviewLocale?: SupportedLocale;
     private readonly _extensionId: string;
+    private _pendingPermissions = new Map<string, (optionId: string | null) => void>();
+    private _permissionCounter = 0;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -125,6 +143,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'cancel':
                     this._lastAssistantText = '';
+                    this._cancelPendingPermissions();
                     this._acp?.cancel();
                     break;
                 case 'openFile':
@@ -188,6 +207,9 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 case 'retry':
                     void this._handleRetry();
                     break;
+                case 'permissionResponse':
+                    this._handlePermissionResponse(message.id, message.optionId ?? null);
+                    break;
             }
         });
 
@@ -215,6 +237,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
     private _saveMessage(role: string, text: string): void {
         this._sessionMessages.push({ role, text, timestamp: Date.now() });
+        this._persistMessages();
+    }
+
+    private _persistMessages(): void {
         try {
             const keep = this._sessionMessages.slice(-100);
             fs.writeFileSync(this._msgPath(this._sessionId), JSON.stringify(keep, null, 2));
@@ -222,6 +248,72 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         } catch {
             // non-critical
         }
+    }
+
+    private _permissionBodyText(title?: string, detail?: string): string {
+        const parts: string[] = [];
+        if (title?.trim()) {
+            parts.push(title.trim());
+        }
+        if (detail?.trim()) {
+            parts.push(detail.trim());
+        }
+        return parts.join('\n\n');
+    }
+
+    private _savePermissionRequest(id: string, request: PermissionRequest): void {
+        this._sessionMessages.push({
+            role: 'permission',
+            text: this._permissionBodyText(request.title, request.detail),
+            timestamp: Date.now(),
+            permissionId: id,
+            title: request.title,
+            detail: request.detail,
+            options: request.options.map(o => ({
+                optionId: o.optionId,
+                name: o.name,
+                kind: o.kind,
+            })),
+            resolved: false,
+        });
+        this._persistMessages();
+    }
+
+    private _updatePermissionRequestContent(id: string, title?: string, detail?: string): void {
+        const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
+        if (!stored || stored.resolved) {
+            return;
+        }
+        if (title !== undefined) {
+            stored.title = title;
+        }
+        if (detail !== undefined) {
+            stored.detail = detail;
+        }
+        stored.text = this._permissionBodyText(stored.title, stored.detail);
+        this._persistMessages();
+    }
+
+    private _resolvePermissionHistory(
+        id: string,
+        outcome: 'selected' | 'cancelled',
+        selectedOptionId?: string,
+        selectedLabel?: string
+    ): void {
+        const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
+        if (!stored) {
+            return;
+        }
+        stored.resolved = true;
+        stored.outcome = outcome;
+        stored.selectedOptionId = selectedOptionId;
+        stored.selectedLabel = selectedLabel;
+        if (outcome === 'selected' && selectedLabel) {
+            stored.text = `${stored.text}\n\n${t('permissionSelected', selectedLabel)}`;
+        } else if (outcome === 'cancelled') {
+            stored.text = `${stored.text}\n\n${t('permissionCancelled')}`;
+        }
+        this._persistMessages();
     }
 
     private _loadHistory(): void {
@@ -347,20 +439,10 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._lastAssistantText = ''; // clear any stale text from previous send
                 }
             },
-            async (prompt) => {
-                this._log(`Permission requested: ${prompt.slice(0, 80)}`);
-                const allowLabel = t('allow');
-                const denyLabel = t('deny');
-                const result = await vscode.window.showWarningMessage(
-                    t('allowHermesRun', prompt),
-                    { modal: false },
-                    allowLabel,
-                    denyLabel
-                );
-                return result === allowLabel;
-            },
+            async (request) => this._requestPermissionInChat(request),
             () => {
                 this._log('Connection lost');
+                this._cancelPendingPermissions();
                 this._tokenUsage = null;
                 this._postTokenUsage();
                 this._acp = undefined;
@@ -405,6 +487,16 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     this._modelState = this._buildFallbackModelList();
                 }
                 this._postModelList();
+            },
+            () => {
+                this._postMessage({ type: 'finishAssistantBubble' });
+            },
+            (cwd) => {
+                const servers = resolveMcpServersForSession(cwd);
+                if (servers.length > 0) {
+                    this._log(`Forwarding ${servers.length} MCP server(s) to Hermes: ${servers.map(s => s.name).join(', ')}`);
+                }
+                return servers;
             }
         );
         this._acp.onLog = (line: string) => {
@@ -420,6 +512,56 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
             this._acp?.dispose();
             this._acp = undefined;
         }
+    }
+
+    private _requestPermissionInChat(request: PermissionRequest): Promise<string | null> {
+        this._log(`Permission requested: ${request.title.slice(0, 80)}`);
+        return new Promise((resolve) => {
+            const id = `perm_${++this._permissionCounter}`;
+            this._pendingPermissions.set(id, resolve);
+            this._savePermissionRequest(id, request);
+            this._postMessage({
+                type: 'permissionRequest',
+                id,
+                title: request.title,
+                detail: request.detail,
+                options: request.options,
+            });
+        });
+    }
+
+    private _handlePermissionResponse(id: string, optionId: string | null): void {
+        const pending = this._pendingPermissions.get(id);
+        if (!pending) {
+            return;
+        }
+        this._pendingPermissions.delete(id);
+        if (optionId) {
+            const stored = this._sessionMessages.find(m => m.permissionId === id && m.role === 'permission');
+            const opt = stored?.options?.find(o => o.optionId === optionId);
+            const label = opt
+                ? resolvePermissionOptionLabel(getWebviewLocale(), opt)
+                : optionId;
+            this._log(`Permission approved: ${optionId}`);
+            this._resolvePermissionHistory(id, 'selected', optionId, label);
+            pending(optionId);
+            return;
+        }
+        this._log('Permission cancelled');
+        this._resolvePermissionHistory(id, 'cancelled');
+        pending(null);
+    }
+
+    private _cancelPendingPermissions(): void {
+        if (this._pendingPermissions.size === 0) {
+            return;
+        }
+        for (const [id, resolve] of this._pendingPermissions) {
+            this._resolvePermissionHistory(id, 'cancelled');
+            resolve(null);
+            this._postMessage({ type: 'permissionDismiss', id });
+        }
+        this._pendingPermissions.clear();
     }
 
     private async _handleRetry(): Promise<void> {
@@ -885,6 +1027,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     public dispose(): void {
+        this._cancelPendingPermissions();
         this._acp?.dispose();
         this._acp = undefined;
         this._view = undefined;
