@@ -1,5 +1,7 @@
 .vscode/**
 node_modules/**
+!node_modules/@agentclientprotocol/**
+!node_modules/zod/**
 src/**
 tsconfig.json
 .gitignore

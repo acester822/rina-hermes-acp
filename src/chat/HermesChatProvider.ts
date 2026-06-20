@@ -24,6 +24,13 @@ interface SessionInfo {
     modelLabel?: string;
 }
 
+interface HermesAgentConfig {
+    name: string;
+    path?: string;
+    profile?: string;
+    cwd?: string;
+}
+
 export class HermesChatProvider implements vscode.WebviewViewProvider {
     // ---- Lifecycle ----
     private _view?: vscode.WebviewView;
@@ -44,11 +51,13 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _modelSwitchInFlight: Promise<void> | undefined;
     private _tokenUsage: TokenUsage | null = null;
     private _webviewLocale?: SupportedLocale;
+    private readonly _extensionId: string;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
         context: vscode.ExtensionContext
     ) {
+        this._extensionId = context.extension.id;
         this._output = vscode.window.createOutputChannel('Hermes Chat', 'hermes-chat');
         const storagePath = context.globalStorageUri.fsPath;
         fs.mkdirSync(storagePath, { recursive: true });
@@ -298,8 +307,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
 
         if (agentName) {
             this._activeAgentName = agentName;
-            const agents = config.get<any[]>('agents') || [];
-            const agent = agents.find(a => a.name === agentName);
+            const agent = this._readAgentConfigs().find(a => a.name === agentName);
             if (agent) {
                 if (agent.path) configPath = agent.path;
                 if (agent.cwd) configCwd = agent.cwd;
@@ -806,13 +814,31 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         await this._connect(agentName);
     }
 
-    private _getAgentNames(): string[] {
+    private _readAgentConfigs(): HermesAgentConfig[] {
         const config = vscode.workspace.getConfiguration('hermes');
-        const agents = config.get<any[]>('agents') || [];
-        const names = agents.map(a => a.name).filter(Boolean);
+        const raw = config.get<unknown>('agents');
+        if (!Array.isArray(raw)) {
+            return [];
+        }
+        return raw.flatMap(entry => {
+            if (!entry || typeof entry !== 'object') {
+                return [];
+            }
+            const name = (entry as { name?: unknown }).name;
+            if (typeof name !== 'string' || !name.trim()) {
+                return [];
+            }
+            const agent = entry as HermesAgentConfig;
+            return [{ ...agent, name: name.trim() }];
+        });
+    }
+
+    private _getAgentNames(): string[] {
+        const names = this._readAgentConfigs().map(a => a.name);
         if (names.length > 0) {
             return names;
         }
+        const config = vscode.workspace.getConfiguration('hermes');
         const profile = config.get<string>('profile');
         return [profile || t('defaultAgent')];
     }
@@ -891,7 +917,7 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private _postPluginInfo(): void {
-        const ext = vscode.extensions.getExtension('JoveRina.rina-hermes-acp');
+        const ext = vscode.extensions.getExtension(this._extensionId);
         const pkg = ext?.packageJSON;
         this._postMessage({
             type: 'pluginInfo',
@@ -904,10 +930,21 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     }
 
     private async _openSettings(): Promise<void> {
-        await vscode.commands.executeCommand(
-            'workbench.action.openSettings',
-            '@ext:JoveRina.rina-hermes-acp'
-        );
+        const useJsonEditor = vscode.workspace
+            .getConfiguration('workbench.settings')
+            .get<string>('editor') === 'json';
+        const isCursor = /cursor/i.test(vscode.env.appName);
+
+        // Cursor's Settings UI refreshes built-in custom agents on open; rapid cancel/reload
+        // surfaces "Failed to load custom agents" / ERR Canceled in DevTools.
+        if (useJsonEditor || isCursor) {
+            await vscode.commands.executeCommand('workbench.action.openSettingsJson', {
+                revealSetting: { key: 'hermes.path', edit: false },
+            });
+            return;
+        }
+
+        await vscode.commands.executeCommand('workbench.action.openSettings', '@id:hermes.path');
     }
 
     private async _onConfigurationChanged(e: vscode.ConfigurationChangeEvent): Promise<void> {
