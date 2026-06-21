@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📦 VS Code Marketplace
+    url: https://marketplace.visualstudio.com/items?itemName=JoveRina.rina-hermes-acp
+    about: Install the latest version
+  - name: 🖥️ Cursor (Open VSX)
+    url: https://open-vsx.org/extension/JoveRina/rina-hermes-acp
+    about: Install via Cursor extension registry
+  - name: 🌐 Brand Site
+    url: https://app.jove-rina.top
+    about: Guides, tips, and related tools
