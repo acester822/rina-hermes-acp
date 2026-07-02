@@ -2,12 +2,12 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AcpClient, AcpStatus, ModelListState, PermissionRequest, TokenUsage } from '../acp/AcpClient';
-import { buildFallbackModelListState, buildModelListStateFromCatalog, enrichModelListState, isRuntimeModelSource, mergeModelListItems, encodeHermesModelValueId, type ModelListItem } from '../acp/modelConfig';
+import { buildFallbackModelListState, buildModelListStateFromCatalog, enrichModelListState, isRuntimeModelSource, mergeModelListItems, encodeHermesModelValueId, type ModelListItem, type ModelProviderGroup } from '../acp/modelConfig';
 import { resolveModelCatalog } from '../acp/acpModelCatalog';
 import { resolveMcpServersForSession } from '../acp/mcpConfig';
 import { normalizeHermesCliProfile, scopeKeyForCliProfile } from '../acp/hermesProfile';
 import { discoverHermesProfiles, detectHermesEnvironment, tryResolveHermesQuick } from '../acp/profileDiscovery';
-import { loadProviderModelsCache, discoverProfileModelCatalog } from '../acp/profileModels';
+import { loadProviderModelsCache, discoverProfileModelCatalog, formatProviderDisplayName } from '../acp/profileModels';
 import type {
     HermesDetectProgressEvent,
     HermesDetectSource,
@@ -147,6 +147,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     private _profileDiscoveryPromise: Promise<void> | undefined;
     /** Models from additional Hermes config providers (beyond the ACP session provider). */
     private _hermesConfigModels: ModelListItem[] = [];
+    /** Groups from profile model discovery, used to augment the ACP session groups. */
+    private _hermesConfigGroups: ModelProviderGroup[] = [];
     private _modelSwitchInFlight: Promise<void> | undefined;
     private _tokenUsage: TokenUsage | null = null;
     private _webviewLocale?: SupportedLocale;
@@ -1083,6 +1085,12 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
         } else {
             this._modelState = this._buildFallbackModelList(combinedDeduped);
         }
+
+        // Merge profile-discovered groups into the final state so all configured
+        // providers appear in the grouped picker, not just the ACP session's.
+        if (this._hermesConfigGroups.length > 0 && this._modelState) {
+            this._modelState = this._mergeProfileGroups(this._modelState);
+        }
         this._postModelList();
     }
 
@@ -1361,10 +1369,19 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 const cacheProviders = Object.keys(cache).length;
                 const cacheModels = Object.values(cache).reduce((sum, m) => sum + m.length, 0);
                 for (const [provider, models] of Object.entries(cache)) {
-                    for (const modelId of models) {
-                        this._hermesConfigModels.push({
-                            valueId: encodeHermesModelValueId(provider, modelId),
-                            name: modelId,
+                    const items = models.map(modelId => ({
+                        valueId: encodeHermesModelValueId(provider, modelId),
+                        name: modelId,
+                    }));
+                    this._hermesConfigModels.push(...items);
+                    // Build a group for this provider so it shows up in the grouped picker
+                    const groupSlug = `custom:${provider}`;
+                    if (!this._hermesConfigGroups.some(g => g.slug === groupSlug)) {
+                        this._hermesConfigGroups.push({
+                            slug: groupSlug,
+                            name: formatProviderDisplayName(provider),
+                            isPrimary: false,
+                            models: [...items],
                         });
                     }
                 }
@@ -1380,6 +1397,8 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 const profileCatalog = await discoverProfileModelCatalog(resolvedPath, target.cliProfile);
                 if (profileCatalog.flatModels.length > 0) {
                     this._log(`Profile discovery: ${profileCatalog.groups.length} groups, ${profileCatalog.flatModels.length} models`);
+                    // Store the full group structure (includes provider names/slugs)
+                    this._hermesConfigGroups = profileCatalog.groups;
                     // Merge profile models into _hermesConfigModels, preserving pricing
                     const existingIds = new Set(this._hermesConfigModels.map(m => m.valueId));
                     for (const pm of profileCatalog.flatModels) {
@@ -2189,6 +2208,43 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                 fromAgent: false,
             });
         }
+    }
+
+    /**
+     * Merge profile-discovered provider groups into the current model state.
+     * Keeps ACP groups as-is and appends profile groups whose slug is not
+     * already present. Within each appended group, deduplicate models by
+     * valueId against any models already in the state.
+     */
+    private _mergeProfileGroups(state: ModelListState): ModelListState {
+        const existingSlugs = new Set(state.groups.map(g => g.slug));
+        const existingValueIds = new Set(state.models.map(m => m.valueId));
+        const extraGroups: ModelProviderGroup[] = [];
+
+        for (const pg of this._hermesConfigGroups) {
+            if (existingSlugs.has(pg.slug)) continue;
+            // Only include models not already in the state
+            const freshModels = pg.models.filter(m => !existingValueIds.has(m.valueId));
+            if (freshModels.length === 0) continue;
+            extraGroups.push({ ...pg, models: freshModels });
+            for (const m of freshModels) {
+                existingValueIds.add(m.valueId);
+            }
+        }
+
+        if (extraGroups.length === 0) return state;
+
+        // Build the union of all models (preserving existing + adding new)
+        const allModels = mergeModelListItems(
+            state.models,
+            extraGroups.flatMap(g => g.models),
+        );
+
+        return {
+            ...state,
+            models: allModels,
+            groups: [...state.groups, ...extraGroups],
+        };
     }
 
     private _handleFilterModels(query: string): void {
