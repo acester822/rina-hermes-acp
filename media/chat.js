@@ -5304,7 +5304,7 @@ function parseToolCallText(text) {
         }) : [];
         const models = payload.models || [];
 
-        if (!models.length) {
+        if (!models.length && !groups.length) {
             list.innerHTML = '<div class="dropdown-item disabled">' + escapeHtml(locale.noModels) + '</div>';
             return;
         }

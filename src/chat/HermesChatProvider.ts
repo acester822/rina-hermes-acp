@@ -1400,13 +1400,25 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
                     // Store the full group structure (includes provider names/slugs)
                     this._hermesConfigGroups = profileCatalog.groups;
                     // Merge profile models into _hermesConfigModels, preserving pricing
-                    const existingIds = new Set(this._hermesConfigModels.map(m => m.valueId));
+                    // for overlapping models (e.g. ones already seen in the cache) by
+                    // updating existing entries instead of dropping them entirely.
+                    const existingModelMap = new Map(
+                        this._hermesConfigModels.map(m => [m.valueId, m])
+                    );
                     for (const pm of profileCatalog.flatModels) {
-                        if (!existingIds.has(pm.valueId)) {
-                            this._hermesConfigModels.push(pm);
-                            existingIds.add(pm.valueId);
+                        const existing = existingModelMap.get(pm.valueId);
+                        if (existing) {
+                            existingModelMap.set(pm.valueId, {
+                                ...existing,
+                                ...pm,
+                                inputCost: pm.inputCost ?? existing.inputCost,
+                                outputCost: pm.outputCost ?? existing.outputCost,
+                            });
+                        } else {
+                            existingModelMap.set(pm.valueId, pm);
                         }
                     }
+                    this._hermesConfigModels = Array.from(existingModelMap.values());
                 }
             } catch (err) {
                 this._log(`Profile model discovery failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -2213,37 +2225,105 @@ export class HermesChatProvider implements vscode.WebviewViewProvider {
     /**
      * Merge profile-discovered provider groups into the current model state.
      * Keeps ACP groups as-is and appends profile groups whose slug is not
-     * already present. Within each appended group, deduplicate models by
-     * valueId against any models already in the state.
+     * already present. For existing groups with matching slugs, merges the
+     * profile group models (adding new ones and carrying over costs for
+     * overlapping ones).
      */
     private _mergeProfileGroups(state: ModelListState): ModelListState {
-        const existingSlugs = new Set(state.groups.map(g => g.slug));
-        const existingValueIds = new Set(state.models.map(m => m.valueId));
+        const nextGroups = state.groups.map(g => ({ ...g, models: [...g.models] }));
+        const addedValueIds = new Set(state.models.map(m => m.valueId));
         const extraGroups: ModelProviderGroup[] = [];
 
         for (const pg of this._hermesConfigGroups) {
-            if (existingSlugs.has(pg.slug)) continue;
-            // Only include models not already in the state
-            const freshModels = pg.models.filter(m => !existingValueIds.has(m.valueId));
-            if (freshModels.length === 0) continue;
-            extraGroups.push({ ...pg, models: freshModels });
-            for (const m of freshModels) {
-                existingValueIds.add(m.valueId);
+            const existing = nextGroups.find(g => g.slug === pg.slug);
+            if (existing) {
+                const modelMap = new Map(existing.models.map(m => [m.valueId, m]));
+                for (const pm of pg.models) {
+                    if (!modelMap.has(pm.valueId)) {
+                        modelMap.set(pm.valueId, pm);
+                        addedValueIds.add(pm.valueId);
+                    } else {
+                        const current = modelMap.get(pm.valueId)!;
+                        modelMap.set(pm.valueId, {
+                            valueId: current.valueId,
+                            name: current.name,
+                            inputCost: pm.inputCost ?? current.inputCost,
+                            outputCost: pm.outputCost ?? current.outputCost,
+                        });
+                    }
+                }
+                existing.models = Array.from(modelMap.values());
+            } else {
+                const freshModels = pg.models.filter(m => !addedValueIds.has(m.valueId));
+                if (freshModels.length === 0) continue;
+                extraGroups.push({ ...pg, models: freshModels });
+                for (const m of freshModels) {
+                    addedValueIds.add(m.valueId);
+                }
             }
         }
 
-        if (extraGroups.length === 0) return state;
+        if (extraGroups.length === 0 && nextGroups.length === state.groups.length) {
+            // No new groups and existing groups were just merged in-place.
+            // Rebuild flat list from all groups so updated costs flow through,
+            // but preserve any flat-list-only models from the original state.
+            const flatMap = new Map<string, ModelListItem>();
+            for (const g of nextGroups) {
+                for (const m of g.models) {
+                    if (!flatMap.has(m.valueId)) {
+                        flatMap.set(m.valueId, m);
+                    } else {
+                        const current = flatMap.get(m.valueId)!;
+                        flatMap.set(m.valueId, {
+                            ...current,
+                            ...m,
+                            inputCost: m.inputCost ?? current.inputCost,
+                            outputCost: m.outputCost ?? current.outputCost,
+                        });
+                    }
+                }
+            }
+            for (const m of state.models) {
+                if (!flatMap.has(m.valueId)) {
+                    flatMap.set(m.valueId, m);
+                }
+            }
+            return {
+                ...state,
+                models: Array.from(flatMap.values()),
+                groups: nextGroups,
+            };
+        }
 
-        // Build the union of all models (preserving existing + adding new)
-        const allModels = mergeModelListItems(
-            state.models,
-            extraGroups.flatMap(g => g.models),
-        );
+        // Rebuild flat list from all groups (updated + added) so the
+        // merged group model data (e.g. costs) always flows through.
+        const flatMap = new Map<string, ModelListItem>();
+        for (const g of nextGroups) {
+            for (const m of g.models) {
+                if (!flatMap.has(m.valueId)) {
+                    flatMap.set(m.valueId, m);
+                } else {
+                    const current = flatMap.get(m.valueId)!;
+                    flatMap.set(m.valueId, {
+                        ...current,
+                        ...m,
+                        inputCost: m.inputCost ?? current.inputCost,
+                        outputCost: m.outputCost ?? current.outputCost,
+                    });
+                }
+            }
+        }
+        // Preserve any flat-list-only models from the original state
+        for (const m of state.models) {
+            if (!flatMap.has(m.valueId)) {
+                flatMap.set(m.valueId, m);
+            }
+        }
 
         return {
             ...state,
-            models: allModels,
-            groups: [...state.groups, ...extraGroups],
+            models: Array.from(flatMap.values()),
+            groups: [...nextGroups, ...extraGroups],
         };
     }
 

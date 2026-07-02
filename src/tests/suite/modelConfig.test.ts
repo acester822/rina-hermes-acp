@@ -172,6 +172,51 @@ describe('modelConfig', () => {
         assert.strictEqual(enriched.currentLabel, 'agnes-2.0-flash');
     });
 
+    it('enrichModelListState carries over costs and updates groups for overlapping models', () => {
+        const state = buildModelListStateFromCatalog(
+            {
+                groups: [
+                    {
+                        slug: 'custom:deepseek',
+                        name: 'DeepSeek',
+                        isPrimary: true,
+                        models: [
+                            { valueId: 'custom:deepseek-v4-flash', name: 'deepseek-v4-flash' },
+                        ],
+                    },
+                ],
+                flatModels: [
+                    { valueId: 'custom:deepseek-v4-flash', name: 'deepseek-v4-flash' },
+                ],
+                profileDefault: {
+                    modelName: 'deepseek-v4-flash',
+                    valueId: 'custom:deepseek-v4-flash',
+                },
+            },
+            null
+        );
+        assert.ok(state);
+        const enriched = enrichModelListState(state, [
+            {
+                valueId: 'custom:deepseek-v4-flash',
+                name: 'deepseek-v4-flash',
+                inputCost: 1.5,
+                outputCost: 2.0,
+            },
+            { valueId: 'custom:agnes-2.0-flash', name: 'agnes-2.0-flash' },
+        ]);
+        assert.strictEqual(enriched.models.length, 2);
+        const ds = enriched.models.find(m => m.valueId === 'custom:deepseek-v4-flash');
+        assert.ok(ds);
+        assert.strictEqual(ds!.inputCost, 1.5);
+        assert.strictEqual(ds!.outputCost, 2.0);
+        assert.strictEqual(enriched.groups.length, 1);
+        const dsGroup = enriched.groups[0].models.find(m => m.valueId === 'custom:deepseek-v4-flash');
+        assert.ok(dsGroup);
+        assert.strictEqual(dsGroup!.inputCost, 1.5);
+        assert.strictEqual(dsGroup!.outputCost, 2.0);
+    });
+
     it('buildModelListStateFromCatalog builds grouped picker state', () => {
         const built = buildModelListStateFromCatalog(
             {

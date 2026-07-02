@@ -244,11 +244,35 @@ export function enrichModelListState(
     state: ModelListState,
     additionalModels: ModelListItem[],
 ): ModelListState {
-    const merged = mergeModelListItems(state.models, additionalModels);
+    const modelMap = new Map<string, ModelListItem>();
+    for (const m of state.models) {
+        modelMap.set(m.valueId, m);
+    }
+    for (const item of additionalModels) {
+        const existing = modelMap.get(item.valueId);
+        if (existing) {
+            modelMap.set(item.valueId, {
+                ...existing,
+                ...item,
+                inputCost: item.inputCost ?? existing.inputCost,
+                outputCost: item.outputCost ?? existing.outputCost,
+            });
+        } else {
+            modelMap.set(item.valueId, item);
+        }
+    }
+    const merged = Array.from(modelMap.values());
+    const mergedMap = new Map(merged.map(m => [m.valueId, m]));
     const stillExists = merged.some(m => m.valueId === state.currentValueId);
+    const updatedGroups = state.groups.map(g => ({
+        ...g,
+        models: g.models.map(m => mergedMap.get(m.valueId) ?? m),
+    }));
+
     return {
         ...state,
         models: merged,
+        groups: updatedGroups,
         currentValueId: stillExists ? state.currentValueId : (merged[0]?.valueId ?? ''),
         currentLabel: stillExists
             ? state.currentLabel
